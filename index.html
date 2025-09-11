@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <title>Retro Tape Player</title>
+    <style>
+        :root{--bg:url('bg.jpg');--glass:rgba(10,10,14,.55);--fg:#e7f0ff;--acc:#ff2ea6}
+        *{box-sizing:border-box}
+        html,body{height:100%}
+        body{margin:0;font:500 16px/1.4 system-ui,Segoe UI,Inter,sans-serif;color:var(--fg);background:#000;display:grid;place-items:center;overflow:hidden}
+        .bg{position:fixed;inset:0;background-image:var(--bg);background-size:contain;background-position:center;background-repeat:no-repeat;filter:contrast(1.05) saturate(1.05)}
+        .scrim{position:fixed;inset:0;background:radial-gradient(80% 80% at 50% 50%,rgba(0,0,0,.0),rgba(0,0,0,.55))}
+        .panel{position:relative;z-index:2;width:min(720px,92vw);backdrop-filter:blur(10px);background:var(--glass);border:1px solid rgba(255,255,255,.08);border-radius:18px;box-shadow:0 8px 40px rgba(0,0,0,.5);padding:14px 14px 10px;display:grid;gap:10px}
+        .top{display:flex;gap:10px;align-items:center}
+        #src{flex:1;min-width:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 12px;color:var(--fg);outline:none}
+        .btn{cursor:pointer;background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.04));border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:10px 14px;color:var(--fg);transition:transform .08s ease}
+        .btn:active{transform:scale(.98)}
+        .row{display:flex;align-items:center;gap:10px}
+        .range{appearance:none;width:100%;height:6px;border-radius:999px;background:rgba(255,255,255,.15);outline:none}
+        .range::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border-radius:50%;background:var(--acc);box-shadow:0 0 18px var(--acc)}
+        .time{min-width:86px;opacity:.9;text-align:right}
+        .list{max-height:38vh;overflow:auto;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06)}
+        .track{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer}
+        .track:hover{background:rgba(255,255,255,.06)}
+        .track.active{background:rgba(255,0,128,.12);border-left:3px solid var(--acc)}
+        .badge{margin-left:auto;opacity:.7;font-size:12px}
+        .brand{position:fixed;right:14px;bottom:10px;opacity:.7;font-size:12px}
+        @media (max-width:520px){.time{display:none}}
+    </style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="scrim"></div>
+
+<main class="panel">
+    <div class="top">
+        <input id="src" placeholder="https://example.com/playlist.json або .txt"/>
+        <button id="load" class="btn">Завантажити</button>
+    </div>
+
+    <div class="row">
+        <button id="prev" class="btn">⏮</button>
+        <button id="play" class="btn">▶️</button>
+        <button id="next" class="btn">⏭</button>
+        <input id="seek" class="range" type="range" min="0" max="100" value="0"/>
+        <span class="time" id="t">00:00 / 00:00</span>
+        <input id="vol" class="range" type="range" min="0" max="1" step="0.01" value="1" style="max-width:140px"/>
+    </div>
+
+    <div id="list" class="list"></div>
+</main>
+
+<audio id="audio" crossorigin="anonymous"></audio>
+<div class="brand">Retro • HTML Template</div>
+
+<script>
+  const $=s=>document.querySelector(s),fmt=s=>{const m=Math.floor(s/60)||0;const ss=Math.floor(s%60)||0;return`${m.toString().padStart(2,'0')}:${ss.toString().padStart(2,'0')}`};
+  const audio=$("#audio"),seek=$("#seek"),play=$("#play"),prev=$("#prev"),next=$("#next"),vol=$("#vol"),list=$("#list"),src=$("#src"),load=$("#load"),time=$("#t");
+  let tracks=[],i=-1,timer;
+
+  async function parsePlaylist(u){
+    const r=await fetch(u,{cache:"no-store"}); if(!r.ok) throw new Error(r.status);
+    const ct=r.headers.get("content-type")||"";
+    if(ct.includes("json")) return await r.json();
+    const txt=await r.text(); return txt.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  }
+  function renderList(){
+    list.innerHTML=""; tracks.forEach((u,idx)=>{const div=document.createElement("div"); div.className="track"+(idx===i?" active":""); const name=decodeURIComponent(u.split("/").pop()||`Track ${idx+1}`);
+      div.innerHTML=`<span>${name}</span><span class="badge">MP3</span>`; div.onclick=()=>playAt(idx); list.appendChild(div);});
+  }
+  function setActive(){[...list.children].forEach((el,idx)=>el.classList.toggle("active",idx===i));}
+  function playAt(idx){
+    i=(idx+tracks.length)%tracks.length;
+    audio.src=tracks[i]; audio.play();
+    play.textContent="⏸"; setActive();
+  }
+  function toggle(){ if(audio.paused){audio.play(); play.textContent="⏸"} else {audio.pause(); play.textContent="▶️"} }
+  function step(n){ if(!tracks.length) return; playAt((i+(n|0)+tracks.length)%tracks.length) }
+
+  audio.addEventListener("timeupdate",()=>{const p=audio.currentTime/(audio.duration||1)*100; seek.value=isFinite(p)?p:0; time.textContent=`${fmt(audio.currentTime||0)} / ${fmt(audio.duration||0)}`});
+  audio.addEventListener("ended",()=>step(1));
+  seek.addEventListener("input",()=>{if(audio.duration) audio.currentTime=(seek.value/100)*audio.duration});
+  play.addEventListener("click",toggle); prev.addEventListener("click",()=>step(-1)); next.addEventListener("click",()=>step(1));
+  vol.addEventListener("input",()=>audio.volume=+vol.value);
+  document.addEventListener("keydown",e=>{if(e.code==="Space"){e.preventDefault();toggle()} if(e.code==="ArrowRight")step(1); if(e.code==="ArrowLeft")step(-1)});
+  load.addEventListener("click",async()=>{try{const arr=await parsePlaylist(src.value.trim()); tracks=arr.filter(u=>/^https:.*\.mp3(\?.*)?$/i.test(u)); i=-1; renderList(); if(tracks.length) playAt(0);}catch(e){alert("Не вдалось завантажити список")}});
+
+  src.value=location.hash.slice(1)?decodeURIComponent(location.hash.slice(1)):"";
+  if(src.value) load.click();
+</script>
+</body>
+</html>
